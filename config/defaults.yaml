@@ -1,0 +1,22 @@
+paths:
+  models: /workspace/ai-rone-models
+  data: /workspace/ai-rone-data
+  longcat_repo: /workspace/LongCat-Video
+  chatterbox_repo: /workspace/chatterbox
+  cosyvoice_repo: /workspace/CosyVoice
+video:
+  native_resolution: 720p
+  final_width: 1920
+  final_height: 1080
+  fps: 25
+  segment_frames: 93
+  continuation_overlap_frames: 13
+  dmd2_steps: 8
+  use_int8: true
+  audio_cfg: 1.0
+  text_cfg: 1.0
+  seed: 42
+quality:
+  upscale_method: realesrgan
+  qc_black_frame_threshold: 0.98
+  qc_av_tolerance_seconds: 0.12
