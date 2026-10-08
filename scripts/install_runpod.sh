@@ -20,8 +20,6 @@ if [ ! -d "$REPOS/chatterbox/.git" ]; then git clone --depth 1 https://github.co
 python3 -m venv "$VENV"
 source "$VENV/bin/activate"
 pip install --upgrade pip wheel
-# RTX 50-series (Blackwell) needs a current CUDA 12.8 PyTorch build.  The
-# earlier cu118 package cannot execute CUDA kernels on the RTX 5090.
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
 pip install -r "$REPOS/MuseTalk/requirements.txt"
 pip install --no-cache-dir -U openmim
@@ -35,4 +33,5 @@ pip install -r "$APP/requirements-ui.txt"
 export HF_HOME="$MODELS/hf"
 export HF_HUB_CACHE="$MODELS/hf/hub"
 bash "$REPOS/MuseTalk/download_weights.sh"
+touch "$APP/.installed"
 echo "Installed. Start the web UI with: $APP/scripts/start.sh"
