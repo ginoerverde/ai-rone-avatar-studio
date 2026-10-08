@@ -11,8 +11,8 @@ else
   git -C "$APP" pull --ff-only
 fi
 
-if [ ! -x "$ROOT/venvs/avatar-studio/bin/python" ]; then
+if [ ! -f "$APP/.installed" ]; then
   bash "$APP/scripts/install_runpod.sh"
 fi
 
-exec bash "$APP/scripts/start.sh"
+nohup bash "$APP/scripts/start.sh" >"$ROOT/ai-rone-data/app.log" 2>&1 &
