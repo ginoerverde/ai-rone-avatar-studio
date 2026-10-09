@@ -1,18 +1,29 @@
 #!/usr/bin/env bash
-# Vast.ai on-start command: install once on the persistent volume and serve UI.
+# Vast.ai on-start command. Return immediately so Vast can bring up Jupyter;
+# installation and the Avatar Studio UI continue in the background.
 set -Eeuo pipefail
 
 ROOT=/workspace
 APP="$ROOT/ai-rone-avatar-studio"
+DATA="$ROOT/ai-rone-data"
+LOG="$DATA/onstart.log"
 
-if [ ! -d "$APP/.git" ]; then
-  git clone --depth 1 https://github.com/ginoerverde/ai-rone-avatar-studio.git "$APP"
-else
-  git -C "$APP" pull --ff-only
-fi
+mkdir -p "$DATA"
 
-if [ ! -f "$APP/.installed" ]; then
-  bash "$APP/scripts/install_runpod.sh"
-fi
+(
+  export DEBIAN_FRONTEND=noninteractive
 
-nohup bash "$APP/scripts/start.sh" >"$ROOT/ai-rone-data/app.log" 2>&1 &
+  if [ ! -d "$APP/.git" ]; then
+    git clone --depth 1 https://github.com/ginoerverde/ai-rone-avatar-studio.git "$APP"
+  else
+    git -C "$APP" pull --ff-only
+  fi
+
+  if [ ! -f "$APP/.installed" ]; then
+    bash "$APP/scripts/install_runpod.sh"
+  fi
+
+  nohup bash "$APP/scripts/start.sh" >"$DATA/app.log" 2>&1 &
+) >"$LOG" 2>&1 &
+
+exit 0
