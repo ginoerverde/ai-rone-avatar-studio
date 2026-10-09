@@ -9,9 +9,17 @@ MODELS="$ROOT/ai-rone-models"
 REPOS="$ROOT/ai-rone-repos"
 VENV="$ROOT/venvs/avatar-studio"
 
-apt-get update
-apt-get install -y --no-install-recommends ffmpeg git sox libsox-dev libgl1 libglib2.0-0
-rm -rf /var/lib/apt/lists/*
+# Do not race the Vast base-image bootstrap.  On some hosts its initial apt
+# transaction can be slow; our installer only invokes apt when FFmpeg or git
+# is actually absent and bounds the wait so the job fails visibly instead of
+# leaving the instance apparently "Connecting" forever.
+export DEBIAN_FRONTEND=noninteractive
+APT_TIMEOUT="${AI_RONE_APT_TIMEOUT:-300}"
+if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v git >/dev/null 2>&1; then
+  timeout "$APT_TIMEOUT" apt-get update
+  timeout "$APT_TIMEOUT" apt-get install -y --no-install-recommends \
+    ffmpeg git sox libsox-dev libgl1 libglib2.0-0
+fi
 mkdir -p "$MODELS" "$REPOS" "$ROOT/ai-rone-data" "$ROOT/venvs"
 
 if [ ! -d "$REPOS/MuseTalk/.git" ]; then git clone --depth 1 https://github.com/TMElyralab/MuseTalk.git "$REPOS/MuseTalk"; fi
@@ -20,6 +28,8 @@ if [ ! -d "$REPOS/chatterbox/.git" ]; then git clone --depth 1 https://github.co
 python3 -m venv "$VENV"
 source "$VENV/bin/activate"
 pip install --upgrade pip wheel
+# RTX 50-series (Blackwell) needs a current CUDA 12.8 PyTorch build.  The
+# earlier cu118 package cannot execute CUDA kernels on the RTX 5090.
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
 pip install -r "$REPOS/MuseTalk/requirements.txt"
 pip install --no-cache-dir -U openmim
