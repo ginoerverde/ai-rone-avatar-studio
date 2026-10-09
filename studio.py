@@ -84,6 +84,21 @@ class Studio:
         output=result / "v15" / "lipsync.mp4"
         if not output.exists(): raise RuntimeError("MuseTalk did not create lipsync.mp4.")
         return output
+    def _screen_filter(self, screen: str | None, duration: float, work: Path, log: Path):
+        """Create a full-HD screen layer without sending readable content to AI."""
+        layer = work / "screen_layer.mp4"
+        if not screen:
+            _run(["ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=0x151b28:s=1920x1080:r=25",
+                  "-t", f"{duration:.3f}", "-c:v", "libx264", "-pix_fmt", "yuv420p", str(layer)], log)
+        elif Path(screen).suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}:
+            _run(["ffmpeg", "-y", "-loop", "1", "-i", screen, "-t", f"{duration:.3f}",
+                  "-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2",
+                  "-r", "25", "-c:v", "libx264", "-pix_fmt", "yuv420p", str(layer)], log)
+        else:
+            _run(["ffmpeg", "-y", "-stream_loop", "-1", "-i", screen, "-t", f"{duration:.3f}",
+                  "-vf", "fps=25,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2",
+                  "-an", "-c:v", "libx264", "-pix_fmt", "yuv420p", str(layer)], log)
+        return layer
     def run(self, job_id):
         j=self.get(job_id); work=self.job_path(j.id).parent; log=self.log(j); j.state="running"; j.started_at=time.time(); self.put(j)
         try:
@@ -94,9 +109,18 @@ class Studio:
             source=self._prepare_source(avatar["reference"],audio,work,log)
             j.stage="MuseTalk 1.5 lip-sync"; j.progress=.42; self.put(j)
             raw=self._musetalk(source,audio,work,log)
+            # MuseTalk's result can be video-only.  The master audio is always
+            # remuxed explicitly, so final A/V duration is deterministic.
+            j.stage="Compositing display and master audio"; j.progress=.72; self.put(j)
+            screen_layer=self._screen_filter(j.screen, _duration(audio), work, log)
             j.stage="Encoding final 1080p MP4"; j.progress=.88; self.put(j)
             final=ROOT / "outputs" / f"{_safe(j.project)}_1080p_FINAL.mp4"
-            _run(["ffmpeg","-y","-i",str(raw),"-vf",f"fps={FPS},scale=1920:1080:flags=lanczos","-r",str(FPS),"-fps_mode","cfr","-c:v","libx264","-preset","slow","-crf","17","-pix_fmt","yuv420p","-c:a","aac","-b:a","256k","-ar","48000",str(final)],log)
+            # First economical build: source-video layout keeps the presenter
+            # on the left while a crisp, separately rendered display sits right.
+            _run(["ffmpeg","-y","-i",str(raw),"-i",str(screen_layer),"-i",str(audio),
+                  "-filter_complex","[0:v]fps=25,scale=960:1080:force_original_aspect_ratio=decrease,pad=960:1080:(ow-iw)/2:(oh-ih)/2[p];[1:v]scale=960:1080[s];[p][s]hstack=inputs=2[v]",
+                  "-map","[v]","-map","2:a:0","-t",f"{_duration(audio):.3f}","-r",str(FPS),"-fps_mode","cfr",
+                  "-c:v","libx264","-preset","slow","-crf","17","-pix_fmt","yuv420p","-c:a","aac","-b:a","256k","-ar","48000",str(final)],log)
             info=_probe(final); streams={s["codec_type"]:s for s in info["streams"]}; v=streams.get("video")
             if not final.exists() or not v or "audio" not in streams or int(v["width"]) != 1920 or int(v["height"]) != 1080 or abs(_duration(final)-_duration(audio)) > .20: raise RuntimeError("QC failed: output stream, dimensions or A/V sync is invalid.")
             j.state="completed"; j.stage="completed"; j.progress=1.; j.output=str(final); self.put(j)
