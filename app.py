@@ -1,5 +1,6 @@
 """Simple one-click UI for the economical MuseTalk avatar pipeline."""
 from __future__ import annotations
+import os
 import threading
 from pathlib import Path
 import gradio as gr
@@ -38,4 +39,8 @@ with gr.Blocks(css=CSS,title="AI-RONE Academy | Avatar Studio") as demo:
         gr.Button("Check status").click(job_status,jid,[gr.Textbox(label="Status"),gr.File(label="Final MP4"),gr.File(label="Log")])
       with gr.Tab("Advanced"):
         gr.Markdown("Defaults use official MuseTalk 1.5 in FP16, Chatterbox Multilingual V3 and FFmpeg. Advanced overrides are deliberately excluded from the main generation screen.")
-demo.queue(default_concurrency_limit=1).launch(server_name="0.0.0.0",server_port=7860,show_error=True)
+# Vast's SSH connection command forwards port 8080 by default.  Keeping the
+# application on this internal port lets the user reach it safely at
+# http://localhost:8080 through SSH, without relying on an unreliable public
+# HTTPS/Open-button endpoint.
+demo.queue(default_concurrency_limit=1).launch(server_name="0.0.0.0",server_port=int(os.getenv("PORT", "8080")),show_error=True)
