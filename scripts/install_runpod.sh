@@ -3,6 +3,8 @@ set -Eeuo pipefail
 
 # One-time install on a CUDA RunPod/Vast instance. The persistent volume must
 # be mounted at /workspace so a stopped compute pod does not lose the models.
+# Run this only after `nvidia-smi` works: failing early is cheaper than a
+# partially installed GPU stack on a broken host.
 ROOT=/workspace
 APP="$ROOT/ai-rone-avatar-studio"
 MODELS="$ROOT/ai-rone-models"
@@ -15,6 +17,11 @@ VENV="$ROOT/venvs/avatar-studio"
 # leaving the instance apparently "Connecting" forever.
 export DEBIAN_FRONTEND=noninteractive
 APT_TIMEOUT="${AI_RONE_APT_TIMEOUT:-300}"
+if ! command -v nvidia-smi >/dev/null 2>&1; then
+  echo "ERROR: NVIDIA driver is not visible. Choose another Vast host before installing." >&2
+  exit 20
+fi
+nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader
 if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v git >/dev/null 2>&1; then
   timeout "$APT_TIMEOUT" apt-get update
   timeout "$APT_TIMEOUT" apt-get install -y --no-install-recommends \
@@ -25,7 +32,14 @@ mkdir -p "$MODELS" "$REPOS" "$ROOT/ai-rone-data" "$ROOT/venvs"
 if [ ! -d "$REPOS/MuseTalk/.git" ]; then git clone --depth 1 https://github.com/TMElyralab/MuseTalk.git "$REPOS/MuseTalk"; fi
 if [ ! -d "$REPOS/chatterbox/.git" ]; then git clone --depth 1 https://github.com/resemble-ai/chatterbox.git "$REPOS/chatterbox"; fi
 
-python3 -m venv "$VENV"
+PYTHON_BIN="${AI_RONE_PYTHON:-python3}"
+"$PYTHON_BIN" - <<'PY'
+import sys
+if sys.version_info < (3, 10):
+    raise SystemExit("Python 3.10 or newer is required")
+print("Using Python", sys.version)
+PY
+"$PYTHON_BIN" -m venv "$VENV"
 source "$VENV/bin/activate"
 pip install --upgrade pip wheel
 # RTX 50-series (Blackwell) needs a current CUDA 12.8 PyTorch build.  The
@@ -43,5 +57,12 @@ pip install -r "$APP/requirements-ui.txt"
 export HF_HOME="$MODELS/hf"
 export HF_HUB_CACHE="$MODELS/hf/hub"
 bash "$REPOS/MuseTalk/download_weights.sh"
+python - <<'PY'
+import shutil, torch
+assert shutil.which("ffmpeg"), "FFmpeg missing after install"
+assert torch.cuda.is_available(), "PyTorch cannot use CUDA"
+print("CUDA ready:", torch.cuda.get_device_name(0))
+PY
+test -f "$REPOS/MuseTalk/models/musetalkV15/unet.pth"
 touch "$APP/.installed"
-echo "Installed. Start the web UI with: $APP/scripts/start.sh"
+echo "Installed and verified. Start the web UI with: $APP/scripts/start.sh"
