@@ -6,5 +6,6 @@ export MUSE_TALK_REPO=/workspace/ai-rone-repos/MuseTalk
 export CHATTERBOX_REPO=/workspace/ai-rone-repos/chatterbox
 export HF_HOME=/workspace/ai-rone-models/hf
 export HF_HUB_CACHE=/workspace/ai-rone-models/hf/hub
+export PORT=8080
 cd /workspace/ai-rone-avatar-studio
 python app.py
