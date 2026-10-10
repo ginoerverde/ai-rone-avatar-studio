@@ -60,8 +60,11 @@ class Studio:
         parts=[]
         for i, chunk in enumerate(split_script(text)):
             part=dst.parent / f"tts_{i:03}.wav"; parts.append(part)
+            # Explicitly request the current multilingual V3 checkpoint.  Without
+            # t3_model='v3' the Chatterbox library may fall back to its legacy V2
+            # checkpoint, which is not the model selected for this studio.
             code=("from chatterbox.mtl_tts import ChatterboxMultilingualTTS as M; import torchaudio; "
-                  "m=M.from_pretrained(device='cuda'); a=m.generate(" + repr(chunk) + ",language_id='it',audio_prompt_path=" + repr(str(voice['reference'])) + "); torchaudio.save(" + repr(str(part)) + ",a,m.sr)")
+                  "m=M.from_pretrained(device='cuda',t3_model='v3'); a=m.generate(" + repr(chunk) + ",language_id='it',audio_prompt_path=" + repr(str(voice['reference'])) + "); torchaudio.save(" + repr(str(part)) + ",a,m.sr)")
             _run(["python", "-c", code], log, CHATTERBOX)
         manifest=dst.parent / "audio_concat.txt"; manifest.write_text("".join(f"file '{p}'\n" for p in parts))
         _run(["ffmpeg","-y","-f","concat","-safe","0","-i",str(manifest),"-af","loudnorm=I=-16:TP=-1.5:LRA=7,aresample=48000","-ar","48000","-ac","1",str(dst)],log)
@@ -79,7 +82,10 @@ class Studio:
         return target
     def _musetalk(self, source, audio, work, log):
         config=work / "musetalk.yaml"; result=work / "musetalk"; result.mkdir()
-        config.write_text(yaml.safe_dump({"lesson": {"video_path":str(source),"audio_path":str(audio),"result_name":"lipsync.mp4"}}))
+        # MuseTalk's official inference format is a mapping of task names to
+        # video_path/audio_path.  A custom top-level "lesson" key is accepted as
+        # a task name, while the fields must be at this level.
+        config.write_text(yaml.safe_dump({"task_0": {"video_path":str(source),"audio_path":str(audio),"result_name":"lipsync.mp4"}}))
         _run(["python","-m","scripts.inference","--inference_config",str(config),"--result_dir",str(result),"--unet_model_path","models/musetalkV15/unet.pth","--unet_config","models/musetalkV15/musetalk.json","--version","v15","--fps",str(FPS),"--use_float16","--saved_coord"],log,MUSE)
         output=result / "v15" / "lipsync.mp4"
         if not output.exists(): raise RuntimeError("MuseTalk did not create lipsync.mp4.")
